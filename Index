@@ -375,7 +375,7 @@
 </div>
 
 <script>
-var DB_URL = 'https://nate-ecebd-default-rtdb.europe-west1.firebasedatabase.app/';
+var DB_URL = 'https://nate-ecebd-default-rtdb.europe-west1.firebasedatabase.app';
 
 // ── NICKNAME ──
 var currentNickname = '';

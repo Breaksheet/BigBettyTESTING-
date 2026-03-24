@@ -377,6 +377,16 @@
 <script>
 var DB_URL = 'https://nate-ecebd-default-rtdb.europe-west1.firebasedatabase.app';
 
+// ── WRITE LOG (defined first so nickname functions can call it) ──
+function writeLog(event,detail){
+  var now=new Date();
+  var kyivStr=now.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hour12:false});
+  var ts=now.getTime();
+  var who=currentNickname||localStorage.getItem('breaksheet_nickname')||'Unknown';
+  var entry={ts:ts,kyiv:kyivStr,event:event,detail:detail,who:who};
+  fetch(DB_URL+'/logs/'+ts+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){});
+}
+
 // ── NICKNAME ──
 var currentNickname = '';
 function initNickname(){
@@ -459,14 +469,7 @@ function initApp(){
 function pushRows(){setSyncStatus('syncing');fbSet('/rows',rows).then(function(){setSyncStatus('ok');}).catch(function(){setSyncStatus('err');});}
 function pushAgents(){setSyncStatus('syncing');fbSet('/agents',agents).then(function(){setSyncStatus('ok');}).catch(function(){setSyncStatus('err');});}
 
-function writeLog(event,detail){
-  var now=new Date();
-  var kyivStr=now.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hour12:false});
-  var ts=now.getTime();
-  var who=currentNickname||localStorage.getItem('breaksheet_nickname')||'Unknown';
-  var entry={ts:ts,kyiv:kyivStr,event:event,detail:detail,who:who};
-  fetch(DB_URL+'/logs/'+ts+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){});
-}
+// writeLog defined above
 
 function pad(n){return String(n).padStart(2,'0');}
 function kyivNowMins(){var s=new Date().toLocaleTimeString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});var p=s.split(':').map(Number);return p[0]*60+p[1]+p[2]/60;}

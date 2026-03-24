@@ -214,7 +214,6 @@
       <span class="kyiv-label">Kyiv Time</span>
       <span class="kyiv-time" id="clock">--:--:--</span>
     </div>
-    <div class="nick-who" id="nick-who-badge">👤 <span id="nick-display">...</span></div>
     <button onclick="openGuide()" style="display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,rgba(79,124,255,0.15),rgba(124,92,252,0.15));border:1.5px solid rgba(79,124,255,0.45);border-radius:22px;color:#a5b4fc;cursor:pointer;font-family:'Syne',sans-serif;font-size:14px;font-weight:700;padding:7px 16px;transition:all 0.2s;letter-spacing:0.3px;white-space:nowrap;" onmouseover="this.style.background='linear-gradient(135deg,rgba(79,124,255,0.28),rgba(124,92,252,0.28))';this.style.borderColor='rgba(79,124,255,0.8)';this.style.color='#c4b5fd'" onmouseout="this.style.background='linear-gradient(135deg,rgba(79,124,255,0.15),rgba(124,92,252,0.15))';this.style.borderColor='rgba(79,124,255,0.45)';this.style.color='#a5b4fc'">📋 Guide</button>
   </div>
   <div class="shift-indicator">Shift: <span id="shift-label">--</span> &nbsp;·&nbsp; Cutoff: <span id="cutoff-label">--</span></div>
@@ -378,15 +377,8 @@ var DB_URL = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.a
 // ── NICKNAME ──
 var currentNickname = '';
 function initNickname(){
-  var saved = localStorage.getItem('breaksheet_nickname');
-  if(saved && saved.trim()){
-    currentNickname = saved.trim();
-    document.getElementById('nick-overlay').classList.add('hidden');
-    document.getElementById('nick-display').textContent = currentNickname;
-  } else {
-    document.getElementById('nick-overlay').classList.remove('hidden');
-    setTimeout(function(){ document.getElementById('nick-input').focus(); }, 100);
-  }
+  document.getElementById('nick-overlay').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('nick-input').focus(); }, 100);
 }
 function saveNickname(){
   var val = document.getElementById('nick-input').value.trim();
@@ -397,9 +389,7 @@ function saveNickname(){
     return;
   }
   currentNickname = val;
-  localStorage.setItem('breaksheet_nickname', val);
   document.getElementById('nick-overlay').classList.add('hidden');
-  document.getElementById('nick-display').textContent = val;
   writeLog('SESSION_START', val + ' joined the session');
 }
 function setupNicknameInput(){
@@ -460,7 +450,7 @@ function writeLog(event,detail){
   var now=new Date();
   var kyivStr=now.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hour12:false});
   var ts=now.getTime();
-  var who=currentNickname||localStorage.getItem('breaksheet_nickname')||'Unknown';
+  var who=currentNickname||'Unknown';
   var entry={ts:ts,kyiv:kyivStr,event:event,detail:detail,who:who};
   fetch(DB_URL+'/logs/'+ts+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(entry)}).catch(function(){});
 }

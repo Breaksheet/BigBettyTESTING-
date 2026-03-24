@@ -375,6 +375,15 @@
 </div>
 
 <script>
+// Global error catch - shows visible error if JS crashes
+window.onerror = function(msg, src, line, col, err) {
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff3b3b;color:#fff;padding:14px 20px;font-family:monospace;font-size:13px;z-index:9999;';
+  d.textContent = '⚠ JS Error: ' + msg + ' (line ' + line + ')';
+  document.body.appendChild(d);
+  return false;
+};
+
 var DB_URL = 'https://nate-ecebd-default-rtdb.europe-west1.firebasedatabase.app';
 
 // ── WRITE LOG (defined first so nickname functions can call it) ──

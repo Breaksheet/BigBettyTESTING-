@@ -260,6 +260,83 @@
   .sched-refresh-btn{background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.3);border-radius:7px;color:var(--kyiv);cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;padding:5px 12px;transition:all 0.18s;white-space:nowrap;}
   .sched-refresh-btn:hover{background:rgba(56,189,248,0.18);}
   .sched-refresh-btn:disabled{opacity:0.4;cursor:default;}
+
+  /* ══════════════════════════════════════════════════════
+     MOBILE RESPONSIVE
+     ══════════════════════════════════════════════════════ */
+  @media(max-width:768px){
+    header{padding:10px 14px;gap:8px;}
+    .logo{font-size:16px;}
+    .kyiv-time{font-size:16px;}
+    .kyiv-clock{padding:5px 10px;}
+    .kyiv-label{display:none;}
+    .shift-indicator{font-size:11px;padding:4px 10px;}
+    .spin-wheel-btn{font-size:12px;padding:5px 10px;}
+    .main{padding:12px 10px;}
+    /* Stack the two table columns into one */
+    [style*="grid-template-columns:1fr 1fr"]{
+      display:flex !important;
+      flex-direction:column !important;
+      gap:10px !important;
+    }
+    .table-header{font-size:11px;padding:8px 12px;}
+    .agent-header{padding:8px 10px 4px 10px;gap:6px;}
+    .agent-name-badge{min-width:unset;font-size:13px;padding:4px 8px;flex:1;}
+    .break-progress-wrap{min-width:80px;}
+    .break-slots{padding:2px 10px 8px 28px;}
+    .break-slot{flex-wrap:wrap;gap:4px;}
+    .slot-label{min-width:52px;font-size:12px;}
+    .time-input-wrap{width:72px;}
+    .time-seg{font-size:13px !important;}
+    .start-break-btn,.stop-break-btn,.slot-clear-btn{font-size:12px;padding:4px 6px;}
+    .status-pill{font-size:12px;padding:2px 7px;}
+    .avail-grid{gap:3px;}
+    .avail-slot{font-size:12px;padding:3px 5px;}
+    .stats{gap:6px;}
+    .stat-card{padding:10px 12px;min-width:70px;}
+    .stat-value{font-size:22px;}
+    .stat-label{font-size:11px;}
+    .break-timer-card{min-width:unset;flex:1 1 100%;}
+    .sched-bar{flex-direction:column;align-items:flex-start;gap:8px;}
+    .sync-bar{bottom:8px;right:8px;padding:6px 10px;font-size:12px;}
+    /* Reminder banner full width on mobile */
+    .break-reminder-banner{border-radius:10px;font-size:13px;}
+  }
+  @media(max-width:420px){
+    .break-slot{gap:3px;}
+    .time-input-wrap{width:64px;}
+    .agent-row-num{display:none;}
+  }
+
+  /* ══════════════════════════════════════════════════════
+     BREAK REMINDER BANNER
+     ══════════════════════════════════════════════════════ */
+  .break-reminder-banner{
+    display:none;
+    background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(255,107,53,0.12));
+    border:1.5px solid rgba(245,158,11,0.5);
+    border-radius:12px;
+    padding:14px 18px;
+    margin-bottom:18px;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    animation:reminder-pulse 2s ease-in-out infinite;
+  }
+  .break-reminder-banner.visible{display:flex;}
+  @keyframes reminder-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,0);}
+    50%{box-shadow:0 0 16px 4px rgba(245,158,11,0.2);}
+  }
+  .reminder-icon{font-size:24px;flex-shrink:0;animation:reminder-bounce 1s ease-in-out infinite;}
+  @keyframes reminder-bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-4px);}}
+  .reminder-text{flex:1;min-width:180px;}
+  .reminder-title{font-size:14px;font-weight:800;color:var(--warning);margin-bottom:2px;}
+  .reminder-sub{font-size:12px;color:var(--muted);}
+  .reminder-dismiss{background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:7px;color:var(--warning);cursor:pointer;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;padding:6px 12px;transition:all 0.18s;white-space:nowrap;}
+  .reminder-dismiss:hover{background:rgba(245,158,11,0.25);}
+
+  /* Sound toggle button */
 </style>
 </head>
 <body>
@@ -393,6 +470,16 @@
     <button class="sched-refresh-btn" id="sched-refresh-btn" onclick="loadSchedule(true)">🔄 Refresh</button>
   </div>
 
+  <!-- Break Reminder Banner -->
+  <div class="break-reminder-banner" id="break-reminder-banner">
+    <span class="reminder-icon">⏰</span>
+    <div class="reminder-text">
+      <div class="reminder-title" id="reminder-title">Don't forget your break!</div>
+      <div class="reminder-sub" id="reminder-sub">You've been on shift for over 3 hours with no break taken yet.</div>
+    </div>
+    <button class="reminder-dismiss" onclick="dismissReminder()">Got it ✓</button>
+  </div>
+
   <div class="avail-panel">
     <div class="avail-title">
       <div class="avail-title-left">🕐 Available Break Slots <span style="color:var(--muted);font-weight:400;letter-spacing:0;text-transform:none;font-size:10px;">— current shift only</span></div>
@@ -469,7 +556,48 @@
    ══════════════════════════════════════════════════════════ */
 
 var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.app/';
-var CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDZBTWb70gVuXwCVDD4L7E-ngDJHAIIjSVzGPnlqlTNy0_StPlq_pOyjWHT8xu9VQ9KJicKSSAUuIW/pub?gid=0&single=true&output=csv';
+/* ── SCHEDULE URL ───────────────────────────────────────────────────────────
+   Automatically reads the correct monthly tab from the sheet.
+   Tab naming pattern: January_BB_RB, February_BB_RB, ... December_BB_RB
+   No gids, no manual updates needed. When a new month tab is added
+   to the sheet, the app picks it up automatically.
+   ───────────────────────────────────────────────────────────── */
+var SCHEDULE_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDZBTWb70gVuXwCVDD4L7E-ngDJHAIIjSVzGPnlqlTNy0_StPlq_pOyjWHT8xu9VQ9KJicKSSAUuIW/pub?single=true&output=csv&sheet=';
+var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+/* Build URL for a given month index (0=Jan, 5=Jun, 6=Jul ...) */
+function scheduleURLForMonth(monthIdx){
+  return SCHEDULE_BASE + MONTH_NAMES[monthIdx] + '_BB_RB';
+}
+
+/* Get current Kyiv month index (0-based) */
+function kyivMonthIdx(){
+  return parseInt(new Date().toLocaleDateString('uk-UA',{timeZone:'Europe/Kyiv',month:'numeric'})) - 1;
+}
+
+/* Try current month first, fall back up to 3 months if tab not published yet.
+   Returns a Promise that resolves to {url, csv} or rejects if all fail. */
+function fetchScheduleWithFallback(){
+  var base = kyivMonthIdx();
+  var attempts = [];
+  for(var i=0; i<4; i++){
+    var idx = ((base - i) % 12 + 12) % 12;
+    attempts.push({monthIdx: idx, name: MONTH_NAMES[idx]});
+  }
+  function tryNext(i){
+    if(i >= attempts.length) return Promise.reject(new Error('No schedule found for any recent month'));
+    var url = scheduleURLForMonth(attempts[i].monthIdx);
+    console.log('[Schedule] Trying ' + attempts[i].name + '_BB_RB...');
+    return fetch(url).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text().then(function(csv){
+        if(i > 0) console.log('[Schedule] Fell back to ' + attempts[i].name);
+        return {url: url, csv: csv, month: attempts[i].name};
+      });
+    }).catch(function(){ return tryNext(i+1); });
+  }
+  return tryNext(0);
+}
 var MIN_AGENTS_FOR_DUAL = 6;
 var MAX_OVERLAP_MINS    = 30;
 var MAX_BREAK=60, MAX_SLOTS=3, NUM_ROWS=10;
@@ -645,17 +773,22 @@ function schedStatus(state,msg){
 }
 
 function loadSchedule(manual){
-  schedStatus('loading','Loading schedule from Google Sheets…');
-  fetch(CSV_URL)
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
-    .then(function(csv){
+  var kyivMonth = MONTH_NAMES[kyivMonthIdx()];
+  schedStatus('loading','Loading schedule — looking for '+kyivMonth+'_BB_RB…');
+
+  fetchScheduleWithFallback()
+    .then(function(result){
+      var csv=result.csv, foundMonth=result.month;
       var rows_csv=parseCSV(csv);
       /* Row index 2 has day numbers starting col 2 */
       var dayRow=rows_csv[2]||[];
       var today=kyivTodayDay();
       var todayCol=-1;
       for(var c=2;c<dayRow.length;c++){ if(dayRow[c].trim()===today){ todayCol=c; break; } }
-      if(todayCol<0){ schedStatus('err',"⚠ Today's date not found in sheet"); return; }
+      if(todayCol<0){
+        schedStatus('err','⚠ Today’s date not found in '+foundMonth+'_BB_RB sheet');
+        return;
+      }
       /* Rows 4+ are agents */
       var entries=[];
       for(var r=4;r<rows_csv.length;r++){
@@ -665,18 +798,21 @@ function loadSchedule(manual){
         if(nick) entries.push({nickname:nick, code:code});
       }
       scheduleCache=entries;
-      console.log('[Schedule] CSV loaded. Today='+today+' col='+todayCol+'. Entries:',entries.map(function(e){ return e.nickname+'='+e.code; }).join(', '));
-      if(manual) writeLog('SCHEDULE_REFRESH','Manual refresh by '+currentNickname);
+      console.log('[Schedule] Loaded '+foundMonth+'_BB_RB. Today='+today+' col='+todayCol+'. Agents:',entries.map(function(e){ return e.nickname+'='+e.code; }).join(', '));
+      if(manual) writeLog('SCHEDULE_REFRESH','Manual refresh — loaded '+foundMonth+'_BB_RB');
       applyScheduleToRows();
+      var onShiftCount=rows.filter(function(r){ return r.agentIdx>=0; }).length;
+  setTimeout(checkBreakReminder,500);
+      var suffix=foundMonth!==kyivMonth?' (fell back from '+kyivMonth+')':'';
+      schedStatus('ok','<strong>'+foundMonth+'_BB_RB</strong> loaded · '+onShiftCount+' agent'+(onShiftCount!==1?'s':'')+' on shift now · next check in ~60s'+suffix);
     })
     .catch(function(err){
-      console.error('Schedule load failed:',err);
-      schedStatus('err','⚠ Could not reach schedule — retrying next minute');
+      console.error('[Schedule] All months failed:',err);
+      schedStatus('err','⚠ Could not load any monthly schedule — check connection');
     });
 }
 
-/* Called every minute and on load. Compares who should be on shift
-   right now vs who is currently in rows, and adds/removes accordingly. */
+
 function applyScheduleToRows(){
   if(!scheduleCache) return;
 
@@ -982,8 +1118,8 @@ function importAgentsFromSchedule(){
   if(btn) btn.disabled=true;
   if(status){ status.style.display='block'; status.style.background='rgba(56,189,248,0.07)'; status.style.border='1px solid rgba(56,189,248,0.2)'; status.style.color='var(--kyiv)'; status.textContent='Fetching schedule…'; }
 
-  fetch(CSV_URL)
-    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+  fetchScheduleWithFallback()
+    .then(function(result){ var csv=result.csv; return csv; })
     .then(function(csv){
       var rows_csv=parseCSV(csv);
       /* Find unique nicknames from col 1, rows 4+ */
@@ -1076,17 +1212,170 @@ function renderBreakTimers(){
   panel.classList.add('visible'); cards.innerHTML='';
   active.forEach(function(a){ var ts=Math.round(a.minsLeft*60),m=Math.floor(ts/60),s=ts%60,isU=a.minsLeft<=5,pct=Math.max(0,Math.min(100,(a.minsLeft/a.totalDur)*100)); var card=document.createElement('div'); card.className='break-timer-card'; card.innerHTML='<span style="font-size:18px;">☕</span><span class="break-timer-name">'+a.name+'</span><div><div class="break-timer-countdown'+(isU?' urgent':'')+'">'+pad(m)+':'+pad(s)+'</div><div class="break-timer-bar-wrap"><div class="break-timer-bar'+(isU?' urgent':'')+'" style="width:'+pct+'%"></div></div></div>'; cards.appendChild(card); });
 }
+var _reminderTick=0,_warnTick=0;
 function updateClock(){
   document.getElementById('clock').textContent=kyivTimeStr();
   document.getElementById('shift-label').textContent=currentShift();
   document.getElementById('cutoff-label').textContent=shiftCutoff();
   renderBreakTimers();
+  _warnTick++; if(_warnTick>=10){ _warnTick=0; checkBreakEndingWarnings(); }
+  _reminderTick++; if(_reminderTick>=60){ _reminderTick=0; checkBreakReminder(); }
 }
 setInterval(updateClock,1000);
 setInterval(render,10000);
 /* Schedule re-check every 60 seconds */
 setInterval(function(){ if(scheduleCache) applyScheduleToRows(); else loadSchedule(false); },60000);
 updateClock();
+
+/* ═══════════════════════════════════════════════════════════
+   SOUND — double ping on 2-min break ending warning only
+   ═══════════════════════════════════════════════════════════ */
+
+var audioCtx = null;
+function getAudioCtx(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+/* Two clean identical pings 320ms apart — simple, clear, not annoying */
+function playDoublePing(){
+  try{
+    var ctx=getAudioCtx();
+    [0, 0.32].forEach(function(delay){
+      var t=ctx.currentTime+delay;
+      var osc=ctx.createOscillator(); var gain=ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type='sine'; osc.frequency.value=880;
+      gain.gain.setValueAtTime(0,t);
+      gain.gain.linearRampToValueAtTime(0.4,t+0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001,t+0.28);
+      osc.start(t); osc.stop(t+0.3);
+    });
+  }catch(e){}
+}
+
+/* ══════════════════════════════════════════════════════════
+   BREAK REMINDER SYSTEM
+   - Checks every minute if the current user's row agent
+     has been on shift 3+ hours with no break taken/booked
+   - Shows banner + plays sound
+   - Dismissed per-session (localStorage key per agent)
+   ══════════════════════════════════════════════════════════ */
+
+var reminderDismissed = false;
+var REMINDER_AFTER_MINS = 180; /* 3 hours */
+
+function checkBreakReminder(){
+  var banner = document.getElementById('break-reminder-banner');
+  if(!banner) return;
+
+  /* Only show reminder to the person whose name is in a row.
+     Find which row has the current user's nickname.
+     We match by currentNickname against agent names. */
+  if(!currentNickname) return;
+
+  var myRowIdx = -1;
+  for(var ri=0; ri<rows.length; ri++){
+    var idx = rows[ri].agentIdx;
+    if(idx < 0) continue;
+    var agName = (agents[idx]||'').trim().toLowerCase();
+    if(agName === currentNickname.toLowerCase()){ myRowIdx = ri; break; }
+  }
+
+  if(myRowIdx < 0){
+    /* Not in a row — hide reminder if shown */
+    banner.classList.remove('visible');
+    return;
+  }
+
+  var row = rows[myRowIdx];
+
+  /* Has the agent booked OR started any break? */
+  var hasAnyBreakActivity = row.slots.some(function(s){
+    return s.from || s.started || slotStatus(s)==='done';
+  });
+
+  if(hasAnyBreakActivity){
+    banner.classList.remove('visible');
+    reminderDismissed = false; /* reset so it can show again if they clear all breaks */
+    return;
+  }
+
+  if(reminderDismissed) return;
+
+  /* Check how long agent has been on shift.
+     Find their shift code from schedule cache. */
+  var shiftStartMins = getAgentShiftStartMins(agents[row.agentIdx]);
+  if(shiftStartMins < 0) return;
+
+  var nowM = kyivNowMins();
+  var elapsed = nowM - shiftStartMins;
+  if(elapsed < 0) elapsed += 1440; /* overnight */
+
+  if(elapsed >= REMINDER_AFTER_MINS){
+    var hoursIn = Math.floor(elapsed/60);
+    var minsIn = Math.floor(elapsed%60);
+    document.getElementById('reminder-title').textContent = 'Hey ' + currentNickname + ', don't forget your break!';
+    document.getElementById('reminder-sub').textContent =
+      'You've been on shift for ' + hoursIn + 'h ' + minsIn + 'm with no break booked yet. Cutoff is ' + shiftCutoff() + '.';
+    banner.classList.add('visible');
+
+  }
+}
+
+function getAgentShiftStartMins(agentName){
+  if(!scheduleCache || !agentName) return -1;
+  var nick = agentName.trim().toLowerCase();
+  for(var i=0; i<scheduleCache.length; i++){
+    if(scheduleCache[i].nickname.toLowerCase() === nick){
+      var p = parseCode(scheduleCache[i].code);
+      if(p) return p.startH * 60;
+    }
+  }
+  return -1;
+}
+
+function dismissReminder(){
+  reminderDismissed = true;
+  reminderSoundPlayed = false;
+  var banner = document.getElementById('break-reminder-banner');
+  if(banner) banner.classList.remove('visible');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2-MINUTE BREAK ENDING WARNING
+   - Only fires for the person who pressed Start (local check)
+   - Plays double ping exactly once per break slot
+   - Checks every 10 seconds via updateClock ticker
+   ═══════════════════════════════════════════════════════════ */
+
+var warnedSlots = new Set();
+
+function checkBreakEndingWarnings(){
+  if(!currentNickname) return;
+  var nowM = kyivNowMins();
+  rows.forEach(function(row, ri){
+    if(row.agentIdx < 0) return;
+    /* Only warn the person whose nickname matches this row's agent */
+    var agentName = (agents[row.agentIdx]||'').trim().toLowerCase();
+    if(agentName !== currentNickname.trim().toLowerCase()) return;
+    row.slots.forEach(function(slot, si){
+      if(!slot.started || slotStatus(slot) !== 'break') return;
+      var key = ri+'-'+si;
+      var toM = toMins(slot.to);
+      var minsLeft = toM - nowM;
+      if(minsLeft < 0) minsLeft += 1440;
+      if(minsLeft <= 2 && minsLeft > 0 && !warnedSlots.has(key)){
+        warnedSlots.add(key);
+        playDoublePing();
+      }
+      if(minsLeft <= 0) warnedSlots.delete(key);
+    });
+  });
+}
+
+
 setupNicknameInput();
 initApp();
 document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ if(document.getElementById('wheel-overlay').classList.contains('open')){ closeWheelModal(); return; } if(document.getElementById('guide-overlay').classList.contains('open')){ closeGuide(); } } });

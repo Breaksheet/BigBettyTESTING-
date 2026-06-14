@@ -1316,9 +1316,9 @@ function checkBreakReminder(){
   if(elapsed >= REMINDER_AFTER_MINS){
     var hoursIn = Math.floor(elapsed/60);
     var minsIn = Math.floor(elapsed%60);
-    document.getElementById('reminder-title').textContent = 'Hey ' + currentNickname + ', don’t forget your break!';
+    document.getElementById('reminder-title').textContent = "Hey " + currentNickname + ", don't forget your break!";
     document.getElementById('reminder-sub').textContent =
-      'You’ve been on shift for ' + hoursIn + 'h ' + minsIn + 'm with no break booked yet. Cutoff is ' + shiftCutoff() + '.';
+      "You've been on shift for " + hoursIn + "h " + minsIn + "m with no break booked yet. Cutoff is " + shiftCutoff() + ".";
     banner.classList.add('visible');
   }
 }

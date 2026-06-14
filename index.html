@@ -585,6 +585,7 @@ function schedStatus(state,msg){
   dot.className='sched-dot'+(state==='ok'?' ok':state==='loading'?' loading':state==='err'?' err':'');
   txt.innerHTML=msg;
   if(btn) btn.disabled=(state==='loading');
+  console.log('[Schedule]',state,msg.replace(/<[^>]+>/g,''));
 }
 
 function loadSchedule(manual){
@@ -608,6 +609,7 @@ function loadSchedule(manual){
         if(nick) entries.push({nickname:nick, code:code});
       }
       scheduleCache=entries;
+      console.log('[Schedule] CSV loaded. Today='+today+' col='+todayCol+'. Entries:',entries.map(function(e){ return e.nickname+'='+e.code; }).join(', '));
       if(manual) writeLog('SCHEDULE_REFRESH','Manual refresh by '+currentNickname);
       applyScheduleToRows();
     })
@@ -641,6 +643,8 @@ function applyScheduleToRows(){
       if(matched){ shouldBeOnShift.push(i); break; }
     }
   });
+
+  console.log('[Schedule] Applying. shouldBeOnShift indexes:',shouldBeOnShift,'names:',shouldBeOnShift.map(function(i){ return agents[i]; }));
 
   var changed=false;
 

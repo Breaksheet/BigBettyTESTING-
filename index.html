@@ -489,7 +489,18 @@ var rowsSSE=null,agentsSSE=null,wheelSSE=null;
 function startSSE(){
   if(rowsSSE) rowsSSE.close();
   rowsSSE=new EventSource(DB_URL+'/rows.json?accept=text/event-stream');
-  rowsSSE.addEventListener('put',function(e){ try{ var d=JSON.parse(e.data); if(d&&d.data&&Array.isArray(d.data)){ rows=d.data; render(); } }catch(err){} setSyncStatus('ok'); });
+  rowsSSE.addEventListener('put',function(e){
+    try{
+      var d=JSON.parse(e.data);
+      if(d&&d.data&&Array.isArray(d.data)){
+        rows=resolveRows(d.data);
+        /* Re-apply schedule — live shift membership always wins */
+        if(scheduleCache) applyScheduleToRows();
+        else render();
+      }
+    }catch(err){}
+    setSyncStatus('ok');
+  });
   rowsSSE.onerror=function(){ setSyncStatus('err'); };
   /* No agents SSE — agents are derived from schedule CSV, not Firebase */
   if(wheelSSE) wheelSSE.close();
@@ -514,19 +525,53 @@ function initRows(){ return Array.from({length:NUM_ROWS},function(_,i){ return{i
 var rows=initRows();
 function countActiveAgents(){ return rows.filter(function(r){ return r.agentIdx>=0; }).length; }
 
+/* Convert stored rows (agentNick string) back to local agentIdx.
+   Also handles legacy rows that still have agentIdx numbers. */
+function resolveRows(rawRows){
+  if(!rawRows) return initRows();
+  return rawRows.map(function(row,i){
+    var r={ id:i, agentIdx:-1, slots:makeEmptySlots() };
+    /* Copy slots */
+    if(Array.isArray(row.slots)) r.slots=row.slots;
+    /* Resolve agentNick → agentIdx */
+    if(row.agentNick&&row.agentNick.trim()){
+      for(var ai=0;ai<agents.length;ai++){
+        if((agents[ai]||'').trim().toLowerCase()===row.agentNick.trim().toLowerCase()){
+          r.agentIdx=ai; break;
+        }
+      }
+    } else if(typeof row.agentIdx==='number'&&row.agentIdx>=0&&agents[row.agentIdx]){
+      /* legacy support */
+      r.agentIdx=row.agentIdx;
+    }
+    return r;
+  });
+}
+
 function initApp(){
   setSyncStatus('syncing');
   /* Agents are NOT stored in Firebase — always derived from schedule CSV.
      This prevents stale names ("Mike - Mykhailo") from ever coming back. */
   Promise.all([fbGet('/rows'),fbGet('/wheelHistory')]).then(function(res){
-    if(res[0]&&Array.isArray(res[0])) rows=res[0];
+    if(res[0]&&Array.isArray(res[0])) rows=resolveRows(res[0]);
     if(res[1]) wmSetHistFromFB(res[1]);
-    renderSetup(); render(); setSyncStatus('ok'); startSSE();
-    loadSchedule(false);
+    renderSetup(); setSyncStatus('ok'); startSSE();
+    loadSchedule(false); /* loadSchedule calls applyScheduleToRows which calls render */
   }).catch(function(e){ console.error(e); setSyncStatus('err'); renderSetup(); render(); loadSchedule(false); });
 }
 
-function pushRows(){ setSyncStatus('syncing'); fbSet('/rows',rows).then(function(){ setSyncStatus('ok'); }).catch(function(){ setSyncStatus('err'); }); }
+function pushRows(){
+  setSyncStatus('syncing');
+  /* Store agentNick (string) not agentIdx (volatile number) */
+  var toStore=rows.map(function(row){
+    return {
+      id: row.id,
+      agentNick: row.agentIdx>=0&&agents[row.agentIdx] ? agents[row.agentIdx] : '',
+      slots: row.slots
+    };
+  });
+  fbSet('/rows',toStore).then(function(){ setSyncStatus('ok'); }).catch(function(){ setSyncStatus('err'); });
+}
 function pushAgents(){ /* no-op: agents are schedule-derived, not stored in Firebase */ }
 function writeLog(ev,detail){ var now=new Date(),kyivStr=now.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hour12:false}),ts=now.getTime(); fetch(DB_URL+'/logs/'+ts+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ts:ts,kyiv:kyivStr,event:ev,detail:detail,who:currentNickname||'Unknown'})}).catch(function(){}); }
 
@@ -634,21 +679,22 @@ function loadSchedule(manual){
 function applyScheduleToRows(){
   if(!scheduleCache) return;
 
-  /* Rebuild agents[] from ALL nicknames in schedule (union of all names ever seen).
-     This means agents[] always reflects the sheet — no manual setup needed. */
-  var allNicks=[];
-  scheduleCache.forEach(function(e){ if(e.nickname&&allNicks.indexOf(e.nickname)<0) allNicks.push(e.nickname); });
-  /* Merge: keep existing if already matches, add new ones */
-  allNicks.forEach(function(nick){
-    var found=false;
-    for(var i=0;i<agents.length;i++){ if((agents[i]||'').trim()===nick){ found=true; break; } }
-    if(!found){
-      /* Add to first empty slot */
-      for(var i=0;i<agents.length;i++){ if(!agents[i]||!agents[i].trim()){ agents[i]=nick; break; } }
+  /* STEP 1: Merge any new nicknames into agents[] WITHOUT changing existing positions.
+     This is safe to call repeatedly — indexes never shift. */
+  scheduleCache.forEach(function(e){
+    if(!e.nickname) return;
+    var already=false;
+    for(var i=0;i<agents.length;i++){
+      if((agents[i]||'').trim().toLowerCase()===e.nickname.toLowerCase()){ already=true; break; }
+    }
+    if(!already){
+      for(var i=0;i<agents.length;i++){
+        if(!agents[i]||!agents[i].trim()){ agents[i]=e.nickname; break; }
+      }
     }
   });
 
-  /* Build set of agent indexes that SHOULD be on shift now */
+  /* STEP 2: Build set of agent indexes on shift RIGHT NOW */
   var shouldBeOnShift=[];
   scheduleCache.forEach(function(entry){
     if(!isOnShiftNow(entry.code)) return;

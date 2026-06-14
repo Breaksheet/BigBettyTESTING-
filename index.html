@@ -405,13 +405,24 @@
     <div class="avail-grid" id="avail-grid"></div>
   </div>
 
-  <!-- Agent Setup (name list editor only — no row assignment) -->
+  <!-- Agent Setup -->
   <div class="setup-panel">
     <div class="setup-title collapsed" id="setup-toggle">Agent Setup</div>
     <div class="setup-content hidden" id="setup-content">
-      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Edit agent names here. The nickname after the dash must match the schedule sheet exactly.</p>
+      <div style="background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:13px;font-weight:700;color:var(--kyiv);margin-bottom:3px;">&#128229; Import from Schedule Sheet</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.5;">Pulls all agent names straight from the Google Sheet. One click keeps the list in sync — no manual typing needed.</div>
+        </div>
+        <button class="btn" onclick="importAgentsFromSchedule()" id="import-sched-btn" style="background:linear-gradient(135deg,var(--kyiv),#4f7cff);white-space:nowrap;">&#128229; Import Names</button>
+      </div>
+      <div id="import-status" style="font-size:12px;margin-bottom:10px;display:none;padding:8px 12px;border-radius:7px;"></div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Names here must match the schedule sheet exactly (e.g. <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-family:'DM Mono',monospace;">Mike</code>, <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-family:'DM Mono',monospace;">Nate</code>). Use Import to sync automatically.</p>
       <div class="agents-grid" id="agents-grid"></div>
-      <div class="setup-actions"><button class="btn" onclick="saveAgents()">Save &amp; Apply</button></div>
+      <div class="setup-actions">
+        <button class="btn" onclick="saveAgents()">Save &amp; Apply</button>
+        <button onclick="clearAgentsList()" style="border:1px solid rgba(255,107,53,0.4);border-radius:8px;background:rgba(255,107,53,0.08);color:var(--on-break);cursor:pointer;font-size:14px;font-weight:700;font-family:'Syne',sans-serif;padding:9px 18px;transition:all 0.18s;" onmouseover="this.style.background='rgba(255,107,53,0.18)'" onmouseout="this.style.background='rgba(255,107,53,0.08)'">Clear All</button>
+      </div>
     </div>
   </div>
 
@@ -492,12 +503,12 @@ function setSyncStatus(s){ var dot=document.getElementById('sync-dot'),lbl=docum
 
 /* ── Agent / row data ── */
 var DEFAULT_AGENTS=[
-  "Mariam - Adeline","Stacy - Alina","Chloe - Amanda","Mason - Andrew","James - Andrian",
-  "Jacob - Artur","Dmytro - Bruce","Den - Denys","Deren - Dmytro","Mira - Elena",
-  "Grant - Giorgi","Joseph - Ihor","Giorgi - Josh","Arthur - Kostiantyn","Lucas - Levon",
-  "Cooper - Luka","Aaron - Max","Mike - Mykhailo","Nady - Naomi","Dachi - Nate",
-  "Nataly - Natia","Matthew - Samir","Jack - Sergii","Gerald - Tarlan","Lina - Tina",
-  "Iris - Tsira","Emily - Valeria","Lili - Viktoriia","Millie - Yulia"
+  "Den","Nady","Gerald","Lili","Nate",
+  "Lina","Mike","Aaron","Emily","Iris",
+  "Frank","George","Blake","Dean","Noah",
+  "Franklin","Luna","Gabi","Patrick","Eric",
+  "William","Nicole","Toby","Paul","April",
+  "Logan","Grace","Maya"
 ];
 var agents=DEFAULT_AGENTS.slice(); while(agents.length<40) agents.push('');
 function makeEmptySlots(){ return Array.from({length:MAX_SLOTS},function(){ return{from:'',to:'',started:false}; }); }
@@ -628,19 +639,12 @@ function applyScheduleToRows(){
   var shouldBeOnShift=[]; /* array of agentIdx */
   scheduleCache.forEach(function(entry){
     if(!isOnShiftNow(entry.code)) return;
-    /* Match schedule nickname against EITHER side of " - " in agent name.
-       e.g. "Mike - Mykhailo" matches "Mike" (first part)
-            "Dachi - Nate"    matches "Nate" (last part)
-       Also handles full-name agents with no dash. */
+    /* Direct match — agent name IS the schedule nickname */
     for(var i=0;i<agents.length;i++){
       if(!agents[i]) continue;
-      var parts=agents[i].split(' - ');
-      var schedNick=entry.nickname.toLowerCase();
-      var matched=false;
-      for(var p=0;p<parts.length;p++){
-        if(parts[p].trim().toLowerCase()===schedNick){ matched=true; break; }
+      if(agents[i].trim().toLowerCase()===entry.nickname.toLowerCase()){
+        shouldBeOnShift.push(i); break;
       }
-      if(matched){ shouldBeOnShift.push(i); break; }
     }
   });
 
@@ -912,6 +916,78 @@ function updateStats(obc){
   document.getElementById('stat-planned').textContent=rows.filter(function(r){ return r.agentIdx>=0&&r.slots.some(function(s){ return s.from&&s.to; }); }).length;
   document.getElementById('stat-total').textContent=countActiveAgents();
 }
+/* ── Import agents from schedule CSV ── */
+function importAgentsFromSchedule(){
+  var btn=document.getElementById('import-sched-btn');
+  var status=document.getElementById('import-status');
+  if(btn) btn.disabled=true;
+  if(status){ status.style.display='block'; status.style.background='rgba(56,189,248,0.07)'; status.style.border='1px solid rgba(56,189,248,0.2)'; status.style.color='var(--kyiv)'; status.textContent='Fetching schedule…'; }
+
+  fetch(CSV_URL)
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+    .then(function(csv){
+      var rows_csv=parseCSV(csv);
+      /* Find unique nicknames from col 1, rows 4+ */
+      var nicknames=[];
+      for(var r=4;r<rows_csv.length;r++){
+        var nick=(rows_csv[r][1]||'').trim();
+        if(nick && nicknames.indexOf(nick)<0) nicknames.push(nick);
+      }
+      nicknames.sort();
+
+      /* For each nickname, check if we already have a matching entry in agents[].
+         If yes — keep it (preserves real names people already typed).
+         If no  — add it as just the nickname so it matches the sheet right away. */
+      var newAgents=[];
+      /* Keep existing entries that match a schedule nickname, add new ones */
+      var usedNicks=new Set();
+      agents.forEach(function(ag){
+        if(!ag||!ag.trim()) return;
+        if(nicknames.indexOf(ag.trim())>=0){
+          newAgents.push(ag.trim());
+          usedNicks.add(ag.trim());
+        }
+      });
+      /* Add any nicknames from sheet not already in list */
+      nicknames.forEach(function(nick){
+        if(!usedNicks.has(nick)) newAgents.push(nick);
+      });
+      /* Pad to 40 */
+      while(newAgents.length<40) newAgents.push('');
+
+      agents=newAgents;
+      renderSetup();
+
+      var added=nicknames.length-usedNicks.size;
+      var kept=usedNicks.size;
+      if(status){
+        status.style.background='rgba(34,197,94,0.07)';
+        status.style.border='1px solid rgba(34,197,94,0.2)';
+        status.style.color='var(--done)';
+        status.textContent='✓ Imported '+nicknames.length+' agents from sheet ('+kept+' existing kept, '+added+' new added). Click Save & Apply to sync.';
+      }
+      if(btn) btn.disabled=false;
+      writeLog('AGENTS_IMPORTED','Imported '+nicknames.length+' nicknames from schedule CSV');
+    })
+    .catch(function(err){
+      console.error('Import failed:',err);
+      if(status){
+        status.style.background='rgba(255,107,53,0.07)';
+        status.style.border='1px solid rgba(255,107,53,0.2)';
+        status.style.color='var(--on-break)';
+        status.textContent='⚠ Could not reach schedule sheet. Check connection.';
+      }
+      if(btn) btn.disabled=false;
+    });
+}
+
+function clearAgentsList(){
+  if(!confirm('Clear the entire agent list? This removes all names but does not affect current break bookings.')) return;
+  agents=Array(40).fill('');
+  renderSetup();
+  writeLog('AGENTS_CLEARED','Agent list wiped by '+currentNickname);
+}
+
 function renderSetup(){
   var grid=document.getElementById('agents-grid'); if(!grid) return; grid.innerHTML='';
   for(var i=0;i<40;i++){

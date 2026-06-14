@@ -347,6 +347,7 @@
     <div class="nick-sub">Enter a nickname so your actions are logged. Stored only on your browser.</div>
     <input class="nick-input" id="nick-input" type="text" maxlength="30" placeholder="Your nickname..." autocomplete="off"/>
     <button class="nick-btn" onclick="saveNickname()">Let's go →</button>
+    <button onclick="clearNickname()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:'Syne',sans-serif;padding:4px;">forget me (clear saved name)</button>
   </div>
 </div>
 
@@ -605,8 +606,37 @@ var agentsSavePending = false;
 
 /* ── Nickname ── */
 var currentNickname='';
-function initNickname(){ document.getElementById('nick-overlay').classList.remove('hidden'); setTimeout(function(){ document.getElementById('nick-input').focus(); },100); }
-function saveNickname(){ var val=document.getElementById('nick-input').value.trim(); if(!val){ var inp=document.getElementById('nick-input'); inp.classList.add('shake'); setTimeout(function(){ inp.classList.remove('shake'); },400); return; } currentNickname=val; document.getElementById('nick-overlay').classList.add('hidden'); writeLog('SESSION_START',val+' joined'); }
+
+function saveNickname(){
+  var val=document.getElementById('nick-input').value.trim();
+  if(!val){ var inp=document.getElementById('nick-input'); inp.classList.add('shake'); setTimeout(function(){ inp.classList.remove('shake'); },400); return; }
+  currentNickname=val;
+  try{ localStorage.setItem('bs_nickname', val); }catch(e){}
+  document.getElementById('nick-overlay').classList.add('hidden');
+  writeLog('SESSION_START',val+' joined');
+}
+
+function initNickname(){
+  /* Check if we have a saved nickname - if so skip the modal entirely */
+  var saved = '';
+  try{ saved = localStorage.getItem('bs_nickname') || ''; }catch(e){}
+  if(saved){
+    currentNickname = saved;
+    document.getElementById('nick-overlay').classList.add('hidden');
+    writeLog('SESSION_RESUME', saved+' resumed session');
+    return;
+  }
+  document.getElementById('nick-overlay').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('nick-input').focus(); },100);
+}
+
+function clearNickname(){
+  try{ localStorage.removeItem('bs_nickname'); }catch(e){}
+  currentNickname='';
+  document.getElementById('nick-input').value='';
+  document.getElementById('nick-overlay').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('nick-input').focus(); },100);
+}
 function setupNicknameInput(){ var inp=document.getElementById('nick-input'); if(inp) inp.addEventListener('keydown',function(e){ if(e.key==='Enter') saveNickname(); }); initNickname(); }
 
 /* ── Firebase ── */

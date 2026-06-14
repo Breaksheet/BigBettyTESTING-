@@ -626,14 +626,19 @@ function applyScheduleToRows(){
   var shouldBeOnShift=[]; /* array of agentIdx */
   scheduleCache.forEach(function(entry){
     if(!isOnShiftNow(entry.code)) return;
-    /* Find matching agent by nickname (part after " - ") */
+    /* Match schedule nickname against EITHER side of " - " in agent name.
+       e.g. "Mike - Mykhailo" matches "Mike" (first part)
+            "Dachi - Nate"    matches "Nate" (last part)
+       Also handles full-name agents with no dash. */
     for(var i=0;i<agents.length;i++){
       if(!agents[i]) continue;
       var parts=agents[i].split(' - ');
-      var nick=(parts.length>1?parts[parts.length-1]:agents[i]).trim();
-      if(nick.toLowerCase()===entry.nickname.toLowerCase()){
-        shouldBeOnShift.push(i); break;
+      var schedNick=entry.nickname.toLowerCase();
+      var matched=false;
+      for(var p=0;p<parts.length;p++){
+        if(parts[p].trim().toLowerCase()===schedNick){ matched=true; break; }
       }
+      if(matched){ shouldBeOnShift.push(i); break; }
     }
   });
 

@@ -491,9 +491,7 @@ function startSSE(){
   rowsSSE=new EventSource(DB_URL+'/rows.json?accept=text/event-stream');
   rowsSSE.addEventListener('put',function(e){ try{ var d=JSON.parse(e.data); if(d&&d.data&&Array.isArray(d.data)){ rows=d.data; render(); } }catch(err){} setSyncStatus('ok'); });
   rowsSSE.onerror=function(){ setSyncStatus('err'); };
-  if(agentsSSE) agentsSSE.close();
-  agentsSSE=new EventSource(DB_URL+'/agents.json?accept=text/event-stream');
-  agentsSSE.addEventListener('put',function(e){ if(agentsSavePending) return; try{ var d=JSON.parse(e.data); if(d&&d.data&&Array.isArray(d.data)){ agents=d.data; while(agents.length<40) agents.push(''); renderSetup(); render(); } }catch(err){} });
+  /* No agents SSE — agents are derived from schedule CSV, not Firebase */
   if(wheelSSE) wheelSSE.close();
   wheelSSE=new EventSource(DB_URL+'/wheelHistory.json?accept=text/event-stream');
   wheelSSE.addEventListener('put',function(e){ try{ var d=JSON.parse(e.data); if(d&&d.data) wmSetHistFromFB(d.data); }catch(err){} });
@@ -518,17 +516,18 @@ function countActiveAgents(){ return rows.filter(function(r){ return r.agentIdx>
 
 function initApp(){
   setSyncStatus('syncing');
-  Promise.all([fbGet('/rows'),fbGet('/agents'),fbGet('/wheelHistory')]).then(function(res){
+  /* Agents are NOT stored in Firebase — always derived from schedule CSV.
+     This prevents stale names ("Mike - Mykhailo") from ever coming back. */
+  Promise.all([fbGet('/rows'),fbGet('/wheelHistory')]).then(function(res){
     if(res[0]&&Array.isArray(res[0])) rows=res[0];
-    if(res[1]&&Array.isArray(res[1])){ agents=res[1]; while(agents.length<40) agents.push(''); }
-    if(res[2]) wmSetHistFromFB(res[2]);
+    if(res[1]) wmSetHistFromFB(res[1]);
     renderSetup(); render(); setSyncStatus('ok'); startSSE();
     loadSchedule(false);
   }).catch(function(e){ console.error(e); setSyncStatus('err'); renderSetup(); render(); loadSchedule(false); });
 }
 
 function pushRows(){ setSyncStatus('syncing'); fbSet('/rows',rows).then(function(){ setSyncStatus('ok'); }).catch(function(){ setSyncStatus('err'); }); }
-function pushAgents(){ setSyncStatus('syncing'); agentsSavePending=true; fbSet('/agents',agents).then(function(){ setSyncStatus('ok'); agentsSavePending=false; }).catch(function(){ setSyncStatus('err'); agentsSavePending=false; }); }
+function pushAgents(){ /* no-op: agents are schedule-derived, not stored in Firebase */ }
 function writeLog(ev,detail){ var now=new Date(),kyivStr=now.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hour12:false}),ts=now.getTime(); fetch(DB_URL+'/logs/'+ts+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ts:ts,kyiv:kyivStr,event:ev,detail:detail,who:currentNickname||'Unknown'})}).catch(function(){}); }
 
 /* ══════════════════════════════════════════════════════════
@@ -635,11 +634,24 @@ function loadSchedule(manual){
 function applyScheduleToRows(){
   if(!scheduleCache) return;
 
+  /* Rebuild agents[] from ALL nicknames in schedule (union of all names ever seen).
+     This means agents[] always reflects the sheet — no manual setup needed. */
+  var allNicks=[];
+  scheduleCache.forEach(function(e){ if(e.nickname&&allNicks.indexOf(e.nickname)<0) allNicks.push(e.nickname); });
+  /* Merge: keep existing if already matches, add new ones */
+  allNicks.forEach(function(nick){
+    var found=false;
+    for(var i=0;i<agents.length;i++){ if((agents[i]||'').trim()===nick){ found=true; break; } }
+    if(!found){
+      /* Add to first empty slot */
+      for(var i=0;i<agents.length;i++){ if(!agents[i]||!agents[i].trim()){ agents[i]=nick; break; } }
+    }
+  });
+
   /* Build set of agent indexes that SHOULD be on shift now */
-  var shouldBeOnShift=[]; /* array of agentIdx */
+  var shouldBeOnShift=[];
   scheduleCache.forEach(function(entry){
     if(!isOnShiftNow(entry.code)) return;
-    /* Direct match — agent name IS the schedule nickname */
     for(var i=0;i<agents.length;i++){
       if(!agents[i]) continue;
       if(agents[i].trim().toLowerCase()===entry.nickname.toLowerCase()){
@@ -997,11 +1009,14 @@ function renderSetup(){
   }
 }
 function saveAgents(){
-  var changes=[];
-  document.querySelectorAll('#agents-grid input').forEach(function(inp){ var idx=parseInt(inp.dataset.idx),oldVal=(agents[idx]||'').trim(),newVal=inp.value.trim(); if(oldVal!==newVal) changes.push('#'+(idx+1)+': "'+oldVal+'" → "'+newVal+'"'); agents[idx]=newVal; });
-  if(changes.length>0) writeLog('AGENTS_UPDATED',changes.join(', '));
-  rows.forEach(function(row){ if(row.agentIdx>=0&&!agents[row.agentIdx]) row.agentIdx=-1; });
-  pushAgents(); render(); alert('Agents saved & synced!');
+  document.querySelectorAll('#agents-grid input').forEach(function(inp){
+    var idx=parseInt(inp.dataset.idx);
+    agents[idx]=inp.value.trim();
+  });
+  /* Re-apply schedule so rows reflect any name changes immediately */
+  if(scheduleCache) applyScheduleToRows();
+  else render();
+  alert('Agent names updated!');
 }
 document.getElementById('setup-toggle').addEventListener('click',function(){ this.classList.toggle('collapsed'); document.getElementById('setup-content').classList.toggle('hidden'); });
 function openGuide(){ document.getElementById('guide-overlay').className='guide-overlay open'; }

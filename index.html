@@ -616,16 +616,19 @@ function saveNickname(){
   writeLog('SESSION_START',val+' joined');
 }
 
+/* Pre-fill input with last used name so agents don't have to retype */
+(function(){
+  try{
+    var last = localStorage.getItem('bs_nickname');
+    if(last){
+      var inp = document.getElementById('nick-input');
+      if(inp) inp.value = last;
+    }
+  }catch(e){}
+})();
+
 function initNickname(){
-  /* Check if we have a saved nickname - if so skip the modal entirely */
-  var saved = '';
-  try{ saved = localStorage.getItem('bs_nickname') || ''; }catch(e){}
-  if(saved){
-    currentNickname = saved;
-    document.getElementById('nick-overlay').classList.add('hidden');
-    writeLog('SESSION_RESUME', saved+' resumed session');
-    return;
-  }
+  /* Always show the modal on every page load / refresh */
   document.getElementById('nick-overlay').classList.remove('hidden');
   setTimeout(function(){ document.getElementById('nick-input').focus(); },100);
 }

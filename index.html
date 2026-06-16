@@ -816,7 +816,7 @@ function loadSchedule(manual){
       var todayCol=-1;
       for(var c=2;c<dayRow.length;c++){ if(dayRow[c].trim()===today){ todayCol=c; break; } }
       if(todayCol<0){
-        schedStatus('err','⚠ Today’s date not found in '+foundMonth+'_BB_RB sheet');
+        schedStatus('err',"⚠ Today's date not found in "+foundMonth+"_BB_RB sheet");
         return;
       }
       /* Rows 4+ are agents */

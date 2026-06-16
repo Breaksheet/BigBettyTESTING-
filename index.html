@@ -855,22 +855,22 @@ function loadSchedule(manual){
          Sample col[1] and col[2] from agent rows and count alphabetic values.
          Whichever column has more purely-alphabetic values = name column. */
       var shiftCodePattern = /^\d{1,2}-\d{1,2}$/;
-      /* Skip codes that are NOT names */
-      var _skipWords = ['OFF','OB','PTO','SICK','OUT','DAYS','AGENTS'];
-      function _isName(v){
-        if(!v || v.length < 2) return false;
-        if(shiftCodePattern.test(v)) return false;
-        if(_skipWords.indexOf(v.toUpperCase()) >= 0) return false;
-        if(/^\d+$/.test(v)) return false;
-        return /^[A-Za-z]/.test(v);
+      /* Find name column by scanning for known BB_RB agent names */
+      var KNOWN_NAMES = [
+        'den','nady','gerald','lili','nate','lina','mike','aaron','emily','iris',
+        'frank','george','blake','dean','noah','franklin','luna','gabi','patrick',
+        'eric','william','nicole','toby','paul','april','logan','grace','maya'
+      ];
+      var colScores = [0,0,0,0,0];
+      for(var _r=4;_r<rows_csv.length;_r++){
+        for(var _c=1;_c<=4;_c++){
+          var _v=(rows_csv[_r][_c]||'').trim().toLowerCase();
+          if(_v && KNOWN_NAMES.indexOf(_v)>=0) colScores[_c]++;
+        }
       }
-      var alpha1=0, alpha2=0;
-      for(var _r=4;_r<Math.min(rows_csv.length,12);_r++){
-        if(_isName((rows_csv[_r][1]||'').trim())) alpha1++;
-        if(_isName((rows_csv[_r][2]||'').trim())) alpha2++;
-      }
-      var nameCol = (alpha1 >= alpha2) ? 1 : 2;
-      console.log('[Schedule] nameCol='+nameCol+' (alpha1='+alpha1+', alpha2='+alpha2+'), codeCol='+todayCol);
+      var nameCol=1, bestScore=0;
+      for(var _c=1;_c<=4;_c++){ if(colScores[_c]>bestScore){ bestScore=colScores[_c]; nameCol=_c; } }
+      console.log('[Schedule] nameCol='+nameCol+' scores='+JSON.stringify(colScores)+', codeCol='+todayCol);
       var codeCol = todayCol;
       /* Rows 4+ are agents */
       var entries=[];

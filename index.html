@@ -556,7 +556,7 @@
    · Skip: T* (tickets), OB (onboarding), PTO, OFF, off, sick, out
    ══════════════════════════════════════════════════════════ */
 
-var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.app/';
+var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.app';
 /* ── SCHEDULE URL ───────────────────────────────────────────────────────────
    Automatically reads the correct monthly tab from the sheet.
    Tab naming pattern: January_BB_RB, February_BB_RB, ... December_BB_RB
@@ -564,21 +564,28 @@ var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.
    to the sheet, the app picks it up automatically.
    ───────────────────────────────────────────────────────────── */
 var SCHEDULE_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTkls_JxMpJsz1Y4qaHmRLd0r-2RwzbRRF8jFD5yIsbCp8PpwOJdwBpuVxWkdEnRtFqAEyFKUTTCi/pub?single=true&output=csv&sheet=';
+var SCHEDULE_BASE_GID = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTkls_JxMpJsz1Y4qaHmRLd0r-2RwzbRRF8jFD5yIsbCp8PpwOJdwBpuVxWkdEnRtFqAEyFKUTTCi/pub?single=true&output=csv&gid=';
 var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-/* All known BB/RB tab name variants (case handled by trying each).
-   Order matters — try most recent naming convention first. */
+/* Known gids for BB_RB tabs — most reliable, fetches instantly */
+var BB_RB_GIDS = {
+  6: '438102544'   /* June_BB_RB */
+  /* 7: 'PASTE_JULY_GID',  July_BB_RB */
+};
+
+/* BB/RB tab name variants as fallback when gid not known */
 var BB_RB_VARIANTS = [
   '_BB_RB', '_BB_Rake', '_bb_rake', '_BB_rake', '_bb_RB',
   '_BB_RB_', '_BBRB', '_bb_rb'
 ];
 
-/* Build URLs for a given month index — returns array of URLs to try */
+/* Build URLs — gid first (instant), then name variants as fallback */
 function scheduleURLsForMonth(monthIdx){
+  var urls = [];
+  if(BB_RB_GIDS[monthIdx]) urls.push(SCHEDULE_BASE_GID + BB_RB_GIDS[monthIdx]);
   var month = MONTH_NAMES[monthIdx];
-  return BB_RB_VARIANTS.map(function(suffix){
-    return SCHEDULE_BASE + month + suffix;
-  });
+  BB_RB_VARIANTS.forEach(function(suffix){ urls.push(SCHEDULE_BASE + month + suffix); });
+  return urls;
 }
 
 /* Get current Kyiv month index (0-based) */
@@ -605,16 +612,21 @@ function fetchScheduleWithFallback(){
     if(i >= attempts.length) return Promise.reject(new Error('No schedule found — checked all month/variant combinations'));
     var a = attempts[i];
     console.log('[Schedule] Trying ' + a.name + a.variant + '...');
-    return fetch(a.url).then(function(r){
+    /* 8-second timeout per attempt so we don't hang forever */
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 8000) : null;
+    var fetchOpts = controller ? {signal: controller.signal} : {};
+    return fetch(a.url, fetchOpts).then(function(r){
+      if(timeoutId) clearTimeout(timeoutId);
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.text().then(function(csv){
-        /* Sanity check: make sure it returned actual schedule data, not an error page */
         if(csv.length < 100 || csv.indexOf(',') < 0) throw new Error('Empty or invalid CSV');
+        /* Basic check: must have agent rows with shift codes */
         var tabName = a.name + a.variant;
         console.log('[Schedule] Found: ' + tabName);
         return {url:a.url, csv:csv, month:a.name, tabName:tabName};
       });
-    }).catch(function(){ return tryNext(i+1); });
+    }).catch(function(){ if(timeoutId) clearTimeout(timeoutId); return tryNext(i+1); });
   }
   return tryNext(0);
 }
@@ -714,10 +726,13 @@ function resolveRows(rawRows){
     var r={ id:i, agentIdx:-1, slots:makeEmptySlots() };
     /* Copy slots */
     if(Array.isArray(row.slots)) r.slots=row.slots;
-    /* Resolve agentNick → agentIdx */
-    if(row.agentNick&&row.agentNick.trim()){
+    /* Resolve agentNick → agentIdx.
+       Reject if agentNick looks like a shift code (HH-HH) or number — stale data. */
+    var _nick = (row.agentNick||'').trim();
+    var _isValidNick = _nick && !/^\d{1,2}-\d{1,2}$/.test(_nick) && !/^\d+$/.test(_nick);
+    if(_isValidNick){
       for(var ai=0;ai<agents.length;ai++){
-        if((agents[ai]||'').trim().toLowerCase()===row.agentNick.trim().toLowerCase()){
+        if((agents[ai]||'').trim().toLowerCase()===_nick.toLowerCase()){
           r.agentIdx=ai; break;
         }
       }
@@ -841,14 +856,48 @@ function loadSchedule(manual){
         schedStatus('err',"⚠ Today's date not found in "+foundMonth+"_BB_RB sheet");
         return;
       }
-      /* Rows 4+ are agents */
-      var entries=[];
-      for(var r=4;r<rows_csv.length;r++){
-        var row=rows_csv[r];
-        var nick=(row[1]||'').trim();
-        var code=(row[todayCol]||'').trim();
-        if(nick) entries.push({nickname:nick, code:code});
+      /* Auto-detect which column contains agent names.
+         Name column: alphabetic text, not a shift code (HH-HH), not a number.
+         Try col[1] first (standard), fall back to col[2] if col[1] looks like codes. */
+      var nameCol = 1;
+      var shiftCodePattern = /^\d{1,2}-\d{2}$/;
+      var skipCodes = ['OB','PTO','SICK','OUT','ob','pto']; /* 'off' removed - it IS a valid shift status not a code */
+      /* Sample first few agent rows to determine name column */
+      var col1Samples = [], col2Samples = [];
+      for(var r=4;r<Math.min(rows_csv.length,10);r++){
+        var s1=(rows_csv[r][1]||'').trim();
+        var s2=(rows_csv[r][2]||'').trim();
+        if(s1) col1Samples.push(s1);
+        if(s2) col2Samples.push(s2);
       }
+      /* Count how many col1 samples look like shift codes or skip codes */
+      var col1CodeCount = col1Samples.filter(function(s){
+        return shiftCodePattern.test(s) || skipCodes.indexOf(s.toUpperCase())>=0 || /^\d+$/.test(s);
+      }).length;
+      /* If more than half of col1 samples look like codes, use col2 as name */
+      if(col1CodeCount > col1Samples.length / 2) {
+        nameCol = 2;
+        console.log('[Schedule] Auto-detected name column: 2 (col1 had ' + col1CodeCount + '/' + col1Samples.length + ' codes)');
+      } else {
+        console.log('[Schedule] Using standard name column: 1');
+      }
+
+      /* When nameCol=2, agent rows have an extra leading column vs the date row,
+         so shift codes are at todayCol+1 relative to the date row index */
+      var codeCol = todayCol;
+/* Rows 4+ are agents — but stop the moment we leave the numbered
+   Customer Support roster. Column A holds 1,2,3...28 only for support
+   agents; Management and anything below it has no row number, so this
+   is a clean boundary that won't pick up stray rows further down. */
+var entries=[];
+for(var r=4;r<rows_csv.length;r++){
+  var row=rows_csv[r];
+  var rowNum=(row[0]||'').trim();
+  if(!/^\d+$/.test(rowNum)) break;
+  var nick=(row[nameCol]||'').trim();
+  var code=(row[codeCol]||'').trim();
+  if(nick && !shiftCodePattern.test(nick) && !/^\d+$/.test(nick)) entries.push({nickname:nick, code:code});
+}
       scheduleCache=entries;
       console.log('[Schedule] Loaded '+foundMonth+'_BB_RB. Today='+today+' col='+todayCol+'. Agents:',entries.map(function(e){ return e.nickname+'='+e.code; }).join(', '));
       if(manual) writeLog('SCHEDULE_REFRESH','Manual refresh — loaded '+(result.tabName||foundMonth+'_BB_RB'));
@@ -1175,11 +1224,24 @@ function importAgentsFromSchedule(){
     .then(function(csv){
       var rows_csv=parseCSV(csv);
       /* Find unique nicknames from col 1, rows 4+ */
-      var nicknames=[];
-      for(var r=4;r<rows_csv.length;r++){
-        var nick=(rows_csv[r][1]||'').trim();
-        if(nick && nicknames.indexOf(nick)<0) nicknames.push(nick);
+      /* Auto-detect name column same as loadSchedule */
+      var shiftPat = /^\d{1,2}-\d{2}$/;
+      var skipC = ['OB','PTO','SICK','OUT','ob','pto'];
+      var nCol = 1;
+      var s1c=0, s1t=0;
+      for(var r=4;r<Math.min(rows_csv.length,10);r++){
+        var sv=(rows_csv[r][1]||'').trim();
+        if(sv){ s1t++; if(shiftPat.test(sv)||skipC.indexOf(sv.toUpperCase())>=0||/^\d+$/.test(sv)) s1c++; }
       }
+      if(s1c > s1t/2) nCol = 2;
+
+      var nicknames=[];
+for(var r=4;r<rows_csv.length;r++){
+  var rowNum=(rows_csv[r][0]||'').trim();
+  if(!/^\d+$/.test(rowNum)) break;
+  var nick=(rows_csv[r][nCol]||'').trim();
+  if(nick && !shiftPat.test(nick) && !/^\d+$/.test(nick) && nicknames.indexOf(nick)<0) nicknames.push(nick);
+}
       nicknames.sort();
 
       /* For each nickname, check if we already have a matching entry in agents[].

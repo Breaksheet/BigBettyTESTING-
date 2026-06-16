@@ -805,7 +805,6 @@ function schedStatus(state,msg){
 }
 
 function loadSchedule(manual){
-  var kyivMonth = MONTH_NAMES[kyivMonthIdx()];
   schedStatus('loading','Loading schedule…');
 
   fetchScheduleWithFallback()
@@ -856,7 +855,7 @@ function loadSchedule(manual){
       applyScheduleToRows();
       var onShiftCount=rows.filter(function(r){ return r.agentIdx>=0; }).length;
   setTimeout(checkBreakReminder,500);
-      var suffix=foundMonth!==kyivMonth?' (fell back from '+kyivMonth+')':'';
+      var suffix='';
       schedStatus('ok','<strong>'+(result.tabName||foundMonth+'_BB_RB')+'</strong> loaded · '+onShiftCount+' agent'+(onShiftCount!==1?'s':'')+' on shift now · next check in ~60s'+suffix);
     })
     .catch(function(err){

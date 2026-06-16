@@ -565,20 +565,39 @@ var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.
    Updated by admin when new schedule is published.
    To update: replace the URL below with the new published CSV link.
    ──────────────────────────────────────────────────────────────── */
-var SCHEDULE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDZBTWb70gVuXwCVDD4L7E-ngDJHAIIjSVzGPnlqlTNy0_StPlq_pOyjWHT8xu9VQ9KJicKSSAUuIW/pub?gid=13663969&single=true&output=csv';
+/* ── SCHEDULE URLs ───────────────────────────────────────────────
+   Add new months here as they become available.
+   startDate: first day that month's schedule should be used (Kyiv time).
+   The app picks the LAST entry whose startDate has passed.
+   ──────────────────────────────────────────────────────────────── */
+var SCHEDULES_BB_RB = [
+  { startDate: '2026-06-01', url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTkls_JxMpJsz1Y4qaHmRLd0r-2RwzbRRF8jFD5yIsbCp8PpwOJdwBpuVxWkdEnRtFqAEyFKUTTCi/pub?gid=438102544&single=true&output=csv' },
+  /* { startDate: '2026-07-01', url: 'PASTE_JULY_BB_RB_CSV_URL_HERE' }, */
+];
+
+function getScheduleURL_BB_RB(){
+  var now = new Date();
+  var kyivDate = new Date(now.toLocaleString('en-US', {timeZone:'Europe/Kyiv'}));
+  var today = kyivDate.getFullYear()+'-'+String(kyivDate.getMonth()+1).padStart(2,'0')+'-'+String(kyivDate.getDate()).padStart(2,'0');
+  var url = SCHEDULES_BB_RB[0].url;
+  for(var i=0;i<SCHEDULES_BB_RB.length;i++){
+    if(today >= SCHEDULES_BB_RB[i].startDate) url = SCHEDULES_BB_RB[i].url;
+  }
+  console.log('[Schedule] Using URL for '+today+': '+url.slice(-20));
+  return url;
+}
 
 function fetchScheduleWithFallback(){
-  console.log('[Schedule] Fetching from direct URL...');
+  var url = getScheduleURL_BB_RB();
   var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   var timeoutId = controller ? setTimeout(function(){ controller.abort(); }, 10000) : null;
   var fetchOpts = controller ? {signal: controller.signal} : {};
-  return fetch(SCHEDULE_URL, fetchOpts).then(function(r){
+  return fetch(url, fetchOpts).then(function(r){
     if(timeoutId) clearTimeout(timeoutId);
-    if(!r.ok) throw new Error('HTTP ' + r.status);
+    if(!r.ok) throw new Error('HTTP '+r.status);
     return r.text().then(function(csv){
-      if(csv.length < 100 || csv.indexOf(',') < 0) throw new Error('Empty or invalid CSV');
-      console.log('[Schedule] Loaded direct URL OK');
-      return {url:SCHEDULE_URL, csv:csv, month:'', tabName:'BB_RB Schedule'};
+      if(csv.length < 100 || csv.indexOf(',') < 0) throw new Error('Empty CSV');
+      return {url:url, csv:csv, month:'', tabName:'BB_RB Schedule'};
     });
   }).catch(function(e){
     if(timeoutId) clearTimeout(timeoutId);
@@ -705,11 +724,16 @@ function initApp(){
   setSyncStatus('syncing');
   /* Agents are NOT stored in Firebase — always derived from schedule CSV.
      This prevents stale names ("Mike - Mykhailo") from ever coming back. */
-  Promise.all([fbGet('/rows'),fbGet('/wheelHistory')]).then(function(res){
+  Promise.all([fbGet('/rows'),fbGet('/wheelHistory'),fbGet('/agents')]).then(function(res){
     if(res[0]&&Array.isArray(res[0])) rows=resolveRows(res[0]);
     if(res[1]) wmSetHistFromFB(res[1]);
+    if(res[2]&&Array.isArray(res[2])){
+      /* Load saved agents from Firebase */
+      res[2].forEach(function(name,i){ if(i<agents.length) agents[i]=name||''; });
+      console.log('[Agents] Loaded from Firebase');
+    }
     renderSetup(); setSyncStatus('ok'); startSSE();
-    loadSchedule(false); /* loadSchedule calls applyScheduleToRows which calls render */
+    loadSchedule(false);
   }).catch(function(e){ console.error(e); setSyncStatus('err'); renderSetup(); render(); loadSchedule(false); });
 }
 
@@ -725,7 +749,7 @@ function pushRows(){
   });
   fbSet('/rows',toStore).then(function(){ setSyncStatus('ok'); }).catch(function(){ setSyncStatus('err'); });
 }
-function pushAgents(){ /* no-op: agents are schedule-derived, not stored in Firebase */ }
+function pushAgents(){ fbSet('/agents', agents).catch(function(){}); }
 function writeLog(ev,detail){ var now=new Date(),kyivStr=now.toLocaleString('uk-UA',{timeZone:'Europe/Kyiv',hour:'2-digit',minute:'2-digit',second:'2-digit',day:'2-digit',month:'2-digit',year:'numeric',hour12:false}),ts=now.getTime(); fetch(DB_URL+'/logs/'+ts+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({ts:ts,kyiv:kyivStr,event:ev,detail:detail,who:currentNickname||'Unknown'})}).catch(function(){}); }
 
 /* ══════════════════════════════════════════════════════════
@@ -1177,10 +1201,14 @@ function saveAgents(){
     var idx=parseInt(inp.dataset.idx);
     agents[idx]=inp.value.trim();
   });
+  /* Save agents to Firebase so they persist across refreshes */
+  fbSet('/agents', agents).then(function(){
+    setSyncStatus('ok');
+  }).catch(function(){ setSyncStatus('err'); });
   /* Re-apply schedule so rows reflect any name changes immediately */
   if(scheduleCache) applyScheduleToRows();
   else render();
-  alert('Agent names updated!');
+  alert('Agent names saved!');
 }
 document.getElementById('setup-toggle').addEventListener('click',function(){ this.classList.toggle('collapsed'); document.getElementById('setup-content').classList.toggle('hidden'); });
 function openGuide(){ document.getElementById('guide-overlay').className='guide-overlay open'; }

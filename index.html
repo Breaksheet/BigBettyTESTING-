@@ -502,14 +502,7 @@
   <div class="setup-panel">
     <div class="setup-title collapsed" id="setup-toggle">Agent Setup</div>
     <div class="setup-content hidden" id="setup-content">
-      <div style="background:rgba(56,189,248,0.06);border:1px solid rgba(56,189,248,0.2);border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:200px;">
-          <div style="font-size:13px;font-weight:700;color:var(--kyiv);margin-bottom:3px;">&#128229; Import from Schedule Sheet</div>
-          <div style="font-size:12px;color:var(--muted);line-height:1.5;">Pulls all agent names straight from the Google Sheet. One click keeps the list in sync — no manual typing needed.</div>
-        </div>
-        <button class="btn" onclick="importAgentsFromSchedule()" id="import-sched-btn" style="background:linear-gradient(135deg,var(--kyiv),#4f7cff);white-space:nowrap;">&#128229; Import Names</button>
-      </div>
-      <div id="import-status" style="font-size:12px;margin-bottom:10px;display:none;padding:8px 12px;border-radius:7px;"></div>
+
       <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Names here must match the schedule sheet exactly (e.g. <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-family:'DM Mono',monospace;">Mike</code>, <code style="background:var(--surface2);padding:1px 5px;border-radius:3px;font-family:'DM Mono',monospace;">Nate</code>). Use Import to sync automatically.</p>
       <div class="agents-grid" id="agents-grid"></div>
       <div class="setup-actions">
@@ -1162,92 +1155,7 @@ function updateStats(obc){
   document.getElementById('stat-planned').textContent=rows.filter(function(r){ return r.agentIdx>=0&&r.slots.some(function(s){ return s.from&&s.to; }); }).length;
   document.getElementById('stat-total').textContent=countActiveAgents();
 }
-/* ── Import agents from schedule CSV ── */
-function importAgentsFromSchedule(){
-  var btn=document.getElementById('import-sched-btn');
-  var status=document.getElementById('import-status');
-  if(btn) btn.disabled=true;
-  if(status){ status.style.display='block'; status.style.background='rgba(56,189,248,0.07)'; status.style.border='1px solid rgba(56,189,248,0.2)'; status.style.color='var(--kyiv)'; status.textContent='Fetching schedule…'; }
 
-  fetchScheduleWithFallback()
-    .then(function(result){ var csv=result.csv; return csv; })
-    .then(function(csv){
-      var rows_csv=parseCSV(csv);
-      /* Find unique nicknames from col 1, rows 4+ */
-      /* Auto-detect name column same as loadSchedule */
-      /* Find name column using known agent names */
-      var KNOWN_NAMES_IMP = [
-        'den','nady','gerald','lili','nate','lina','mike','aaron','emily','iris',
-        'frank','george','blake','dean','noah','franklin','luna','gabi','patrick',
-        'eric','william','nicole','toby','paul','april','logan','grace','maya'
-      ];
-      var impScores = [0,0,0,0,0];
-      for(var _r=4;_r<rows_csv.length;_r++){
-        for(var _c=1;_c<=4;_c++){
-          var _v=(rows_csv[_r][_c]||'').trim().toLowerCase();
-          if(_v && KNOWN_NAMES_IMP.indexOf(_v)>=0) impScores[_c]++;
-        }
-      }
-      var nCol=1, bestImpScore=0;
-      for(var _c=1;_c<=4;_c++){ if(impScores[_c]>bestImpScore){ bestImpScore=impScores[_c]; nCol=_c; } }
-      console.log('[Import] nameCol='+nCol+' scores='+JSON.stringify(impScores));
-
-      var shiftPat = /^\d{1,2}-\d{1,2}$/;
-      var SKIP_IMP = ['off','ob','pto','sick','out','days','agents'];
-      var nicknames=[];
-      for(var r=4;r<rows_csv.length;r++){
-        var nick=(rows_csv[r][nCol]||'').trim();
-        if(nick && !shiftPat.test(nick) && !/^\d+$/.test(nick)
-           && SKIP_IMP.indexOf(nick.toLowerCase())<0
-           && nicknames.indexOf(nick)<0) nicknames.push(nick);
-      }
-      nicknames.sort();
-
-      /* For each nickname, check if we already have a matching entry in agents[].
-         If yes — keep it (preserves real names people already typed).
-         If no  — add it as just the nickname so it matches the sheet right away. */
-      var newAgents=[];
-      /* Keep existing entries that match a schedule nickname, add new ones */
-      var usedNicks=new Set();
-      agents.forEach(function(ag){
-        if(!ag||!ag.trim()) return;
-        if(nicknames.indexOf(ag.trim())>=0){
-          newAgents.push(ag.trim());
-          usedNicks.add(ag.trim());
-        }
-      });
-      /* Add any nicknames from sheet not already in list */
-      nicknames.forEach(function(nick){
-        if(!usedNicks.has(nick)) newAgents.push(nick);
-      });
-      /* Pad to 40 */
-      while(newAgents.length<40) newAgents.push('');
-
-      agents=newAgents;
-      renderSetup();
-
-      var added=nicknames.length-usedNicks.size;
-      var kept=usedNicks.size;
-      if(status){
-        status.style.background='rgba(34,197,94,0.07)';
-        status.style.border='1px solid rgba(34,197,94,0.2)';
-        status.style.color='var(--done)';
-        status.textContent='✓ Imported '+nicknames.length+' agents from sheet ('+kept+' existing kept, '+added+' new added). Click Save & Apply to sync.';
-      }
-      if(btn) btn.disabled=false;
-      writeLog('AGENTS_IMPORTED','Imported '+nicknames.length+' nicknames from schedule CSV');
-    })
-    .catch(function(err){
-      console.error('Import failed:',err);
-      if(status){
-        status.style.background='rgba(255,107,53,0.07)';
-        status.style.border='1px solid rgba(255,107,53,0.2)';
-        status.style.color='var(--on-break)';
-        status.textContent='⚠ Could not reach schedule sheet. Check connection.';
-      }
-      if(btn) btn.disabled=false;
-    });
-}
 
 function clearAgentsList(){
   if(!confirm('Clear the entire agent list? This removes all names but does not affect current break bookings.')) return;

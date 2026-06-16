@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Break Sheet · LIVE</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -544,6 +547,7 @@
 <div class="sync-bar"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">Connecting...</span></div>
 
 <script>
+/* VERSION: nameCol2-fixed-1456 */
 /* ══════════════════════════════════════════════════════════
    BREAKSHEET — Schedule-aware build
    Rules:
@@ -856,14 +860,20 @@ function loadSchedule(manual){
         schedStatus('err',"⚠ Today's date not found in "+foundMonth+"_BB_RB sheet");
         return;
       }
-      /* Sheet structure (confirmed for both BB_RB and SP):
-         col[0]=empty, col[1]=row_num, col[2]=agent_name, col[3]=shift_day01...
-         dayRow: col[0]=empty, col[1]='Days', col[2]='01', col[3]='02'...
-         So nameCol=2, codeCol=todayCol (same alignment) */
-      var nameCol = 2;
-      var shiftCodePattern = /^\d{1,2}-\d{2}$/;
+      /* Auto-detect name column by finding which column has alphabetic names.
+         Sample col[1] and col[2] from agent rows and count alphabetic values.
+         Whichever column has more purely-alphabetic values = name column. */
+      var shiftCodePattern = /^\d{1,2}-\d{1,2}$/;
+      var alpha1=0, alpha2=0;
+      for(var _r=4;_r<Math.min(rows_csv.length,12);_r++){
+        var _v1=(rows_csv[_r][1]||'').trim();
+        var _v2=(rows_csv[_r][2]||'').trim();
+        if(_v1 && /^[A-Za-z]/.test(_v1) && !shiftCodePattern.test(_v1)) alpha1++;
+        if(_v2 && /^[A-Za-z]/.test(_v2) && !shiftCodePattern.test(_v2)) alpha2++;
+      }
+      var nameCol = (alpha2 >= alpha1) ? 2 : 1;
+      console.log('[Schedule] nameCol='+nameCol+' (alpha1='+alpha1+', alpha2='+alpha2+'), codeCol='+todayCol);
       var codeCol = todayCol;
-      console.log('[Schedule] nameCol=2 (fixed), codeCol='+codeCol);
       /* Rows 4+ are agents */
       var entries=[];
       for(var r=4;r<rows_csv.length;r++){

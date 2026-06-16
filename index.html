@@ -884,22 +884,9 @@ function loadSchedule(manual){
 function applyScheduleToRows(){
   if(!scheduleCache) return;
 
-  /* STEP 1: Merge any new nicknames into agents[] WITHOUT changing existing positions.
-     This is safe to call repeatedly — indexes never shift. */
-  scheduleCache.forEach(function(e){
-    if(!e.nickname) return;
-    var already=false;
-    for(var i=0;i<agents.length;i++){
-      if((agents[i]||'').trim().toLowerCase()===e.nickname.toLowerCase()){ already=true; break; }
-    }
-    if(!already){
-      for(var i=0;i<agents.length;i++){
-        if(!agents[i]||!agents[i].trim()){ agents[i]=e.nickname; break; }
-      }
-    }
-  });
-
-  /* STEP 2: Build set of agent indexes on shift RIGHT NOW */
+  /* Build set of agent indexes on shift RIGHT NOW
+     agents[] is managed manually via Agent Setup + saved to Firebase.
+     We do NOT merge CSV names into agents[] to avoid pollution. */
   var shouldBeOnShift=[];
   scheduleCache.forEach(function(entry){
     if(!isOnShiftNow(entry.code)) return;

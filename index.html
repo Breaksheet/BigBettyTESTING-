@@ -7,6 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Break Sheet · LIVE</title>
+<!-- v202606161700 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=Fredoka+One&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -592,9 +593,7 @@ function fetchScheduleWithFallback(){
   });
 }
 
-function kyivMonthIdx(){
-  return parseInt(new Date().toLocaleDateString('uk-UA',{timeZone:'Europe/Kyiv',month:'numeric'})) - 1;
-}
+
 var MIN_AGENTS_FOR_DUAL = 6;
 var MAX_OVERLAP_MINS    = 30;
 var MAX_BREAK=60, MAX_SLOTS=3, NUM_ROWS=10;

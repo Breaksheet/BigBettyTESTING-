@@ -855,14 +855,21 @@ function loadSchedule(manual){
          Sample col[1] and col[2] from agent rows and count alphabetic values.
          Whichever column has more purely-alphabetic values = name column. */
       var shiftCodePattern = /^\d{1,2}-\d{1,2}$/;
+      /* Skip codes that are NOT names */
+      var _skipWords = ['OFF','OB','PTO','SICK','OUT','DAYS','AGENTS'];
+      function _isName(v){
+        if(!v || v.length < 2) return false;
+        if(shiftCodePattern.test(v)) return false;
+        if(_skipWords.indexOf(v.toUpperCase()) >= 0) return false;
+        if(/^\d+$/.test(v)) return false;
+        return /^[A-Za-z]/.test(v);
+      }
       var alpha1=0, alpha2=0;
       for(var _r=4;_r<Math.min(rows_csv.length,12);_r++){
-        var _v1=(rows_csv[_r][1]||'').trim();
-        var _v2=(rows_csv[_r][2]||'').trim();
-        if(_v1 && /^[A-Za-z]/.test(_v1) && !shiftCodePattern.test(_v1)) alpha1++;
-        if(_v2 && /^[A-Za-z]/.test(_v2) && !shiftCodePattern.test(_v2)) alpha2++;
+        if(_isName((rows_csv[_r][1]||'').trim())) alpha1++;
+        if(_isName((rows_csv[_r][2]||'').trim())) alpha2++;
       }
-      var nameCol = (alpha2 >= alpha1) ? 2 : 1;
+      var nameCol = (alpha1 >= alpha2) ? 1 : 2;
       console.log('[Schedule] nameCol='+nameCol+' (alpha1='+alpha1+', alpha2='+alpha2+'), codeCol='+todayCol);
       var codeCol = todayCol;
       /* Rows 4+ are agents */

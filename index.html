@@ -568,28 +568,19 @@ var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.
    to the sheet, the app picks it up automatically.
    ───────────────────────────────────────────────────────────── */
 var SCHEDULE_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTkls_JxMpJsz1Y4qaHmRLd0r-2RwzbRRF8jFD5yIsbCp8PpwOJdwBpuVxWkdEnRtFqAEyFKUTTCi/pub?single=true&output=csv&sheet=';
-var SCHEDULE_BASE_GID = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTkls_JxMpJsz1Y4qaHmRLd0r-2RwzbRRF8jFD5yIsbCp8PpwOJdwBpuVxWkdEnRtFqAEyFKUTTCi/pub?single=true&output=csv&gid=';
 var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-/* Known gids for BB_RB tabs — most reliable, fetches instantly */
-var BB_RB_GIDS = {
-  6: '438102544'   /* June_BB_RB */
-  /* 7: 'PASTE_JULY_GID',  July_BB_RB */
-};
-
-/* BB/RB tab name variants as fallback when gid not known */
+/* BB/RB tab name variants — tried in order until one works */
 var BB_RB_VARIANTS = [
   '_BB_RB', '_BB_Rake', '_bb_rake', '_BB_rake', '_bb_RB',
   '_BB_RB_', '_BBRB', '_bb_rb'
 ];
 
-/* Build URLs — gid first (instant), then name variants as fallback */
 function scheduleURLsForMonth(monthIdx){
-  var urls = [];
-  if(BB_RB_GIDS[monthIdx]) urls.push(SCHEDULE_BASE_GID + BB_RB_GIDS[monthIdx]);
   var month = MONTH_NAMES[monthIdx];
-  BB_RB_VARIANTS.forEach(function(suffix){ urls.push(SCHEDULE_BASE + month + suffix); });
-  return urls;
+  return BB_RB_VARIANTS.map(function(suffix){
+    return SCHEDULE_BASE + month + suffix;
+  });
 }
 
 /* Get current Kyiv month index (0-based) */

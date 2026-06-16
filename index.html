@@ -514,7 +514,7 @@
       <div class="agents-grid" id="agents-grid"></div>
       <div class="setup-actions">
         <button class="btn" onclick="saveAgents()">Save &amp; Apply</button>
-        <button onclick="clearAgentsList()" style="border:1px solid rgba(255,107,53,0.4);border-radius:8px;background:rgba(255,107,53,0.08);color:var(--on-break);cursor:pointer;font-size:14px;font-weight:700;font-family:'Syne',sans-serif;padding:9px 18px;transition:all 0.18s;" onmouseover="this.style.background='rgba(255,107,53,0.18)'" onmouseout="this.style.background='rgba(255,107,53,0.08)'">Clear All</button>
+
       </div>
     </div>
   </div>
@@ -1175,13 +1175,31 @@ function importAgentsFromSchedule(){
       var rows_csv=parseCSV(csv);
       /* Find unique nicknames from col 1, rows 4+ */
       /* Auto-detect name column same as loadSchedule */
-      var shiftPat = /^\d{1,2}-\d{2}$/;
-      var nCol = 2; /* col[2] is always the name column for both sheets */
+      /* Find name column using known agent names */
+      var KNOWN_NAMES_IMP = [
+        'den','nady','gerald','lili','nate','lina','mike','aaron','emily','iris',
+        'frank','george','blake','dean','noah','franklin','luna','gabi','patrick',
+        'eric','william','nicole','toby','paul','april','logan','grace','maya'
+      ];
+      var impScores = [0,0,0,0,0];
+      for(var _r=4;_r<rows_csv.length;_r++){
+        for(var _c=1;_c<=4;_c++){
+          var _v=(rows_csv[_r][_c]||'').trim().toLowerCase();
+          if(_v && KNOWN_NAMES_IMP.indexOf(_v)>=0) impScores[_c]++;
+        }
+      }
+      var nCol=1, bestImpScore=0;
+      for(var _c=1;_c<=4;_c++){ if(impScores[_c]>bestImpScore){ bestImpScore=impScores[_c]; nCol=_c; } }
+      console.log('[Import] nameCol='+nCol+' scores='+JSON.stringify(impScores));
 
+      var shiftPat = /^\d{1,2}-\d{1,2}$/;
+      var SKIP_IMP = ['off','ob','pto','sick','out','days','agents'];
       var nicknames=[];
       for(var r=4;r<rows_csv.length;r++){
         var nick=(rows_csv[r][nCol]||'').trim();
-        if(nick && !shiftPat.test(nick) && !/^\d+$/.test(nick) && nicknames.indexOf(nick)<0) nicknames.push(nick);
+        if(nick && !shiftPat.test(nick) && !/^\d+$/.test(nick)
+           && SKIP_IMP.indexOf(nick.toLowerCase())<0
+           && nicknames.indexOf(nick)<0) nicknames.push(nick);
       }
       nicknames.sort();
 

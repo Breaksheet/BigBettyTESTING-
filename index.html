@@ -563,12 +563,22 @@ var DB_URL  = 'https://testing-76519-default-rtdb.europe-west1.firebasedatabase.
    No gids, no manual updates needed. When a new month tab is added
    to the sheet, the app picks it up automatically.
    ───────────────────────────────────────────────────────────── */
-var SCHEDULE_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDZBTWb70gVuXwCVDD4L7E-ngDJHAIIjSVzGPnlqlTNy0_StPlq_pOyjWHT8xu9VQ9KJicKSSAUuIW/pub?single=true&output=csv&sheet=';
+var SCHEDULE_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRpTkls_JxMpJsz1Y4qaHmRLd0r-2RwzbRRF8jFD5yIsbCp8PpwOJdwBpuVxWkdEnRtFqAEyFKUTTCi/pub?single=true&output=csv&sheet=';
 var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-/* Build URL for a given month index (0=Jan, 5=Jun, 6=Jul ...) */
-function scheduleURLForMonth(monthIdx){
-  return SCHEDULE_BASE + MONTH_NAMES[monthIdx] + '_BB_RB';
+/* All known BB/RB tab name variants (case handled by trying each).
+   Order matters — try most recent naming convention first. */
+var BB_RB_VARIANTS = [
+  '_BB_RB', '_BB_Rake', '_bb_rake', '_BB_rake', '_bb_RB',
+  '_BB_RB_', '_BBRB', '_bb_rb'
+];
+
+/* Build URLs for a given month index — returns array of URLs to try */
+function scheduleURLsForMonth(monthIdx){
+  var month = MONTH_NAMES[monthIdx];
+  return BB_RB_VARIANTS.map(function(suffix){
+    return SCHEDULE_BASE + month + suffix;
+  });
 }
 
 /* Get current Kyiv month index (0-based) */
@@ -576,24 +586,33 @@ function kyivMonthIdx(){
   return parseInt(new Date().toLocaleDateString('uk-UA',{timeZone:'Europe/Kyiv',month:'numeric'})) - 1;
 }
 
-/* Try current month first, fall back up to 3 months if tab not published yet.
-   Returns a Promise that resolves to {url, csv} or rejects if all fail. */
+/* Try current month first (all variants), fall back up to 3 months.
+   For each month, tries all known BB/RB tab name variants.
+   Returns a Promise resolving to {url, csv, month, tabName} or rejects. */
 function fetchScheduleWithFallback(){
   var base = kyivMonthIdx();
+  /* Build flat list of {monthIdx, name, url} to try in order */
   var attempts = [];
   for(var i=0; i<4; i++){
-    var idx = ((base - i) % 12 + 12) % 12;
-    attempts.push({monthIdx: idx, name: MONTH_NAMES[idx]});
+    var mIdx = ((base - i) % 12 + 12) % 12;
+    var mName = MONTH_NAMES[mIdx];
+    var urls = scheduleURLsForMonth(mIdx);
+    urls.forEach(function(url, vi){
+      attempts.push({monthIdx:mIdx, name:mName, url:url, variant:BB_RB_VARIANTS[vi]});
+    });
   }
   function tryNext(i){
-    if(i >= attempts.length) return Promise.reject(new Error('No schedule found for any recent month'));
-    var url = scheduleURLForMonth(attempts[i].monthIdx);
-    console.log('[Schedule] Trying ' + attempts[i].name + '_BB_RB...');
-    return fetch(url).then(function(r){
+    if(i >= attempts.length) return Promise.reject(new Error('No schedule found — checked all month/variant combinations'));
+    var a = attempts[i];
+    console.log('[Schedule] Trying ' + a.name + a.variant + '...');
+    return fetch(a.url).then(function(r){
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.text().then(function(csv){
-        if(i > 0) console.log('[Schedule] Fell back to ' + attempts[i].name);
-        return {url: url, csv: csv, month: attempts[i].name};
+        /* Sanity check: make sure it returned actual schedule data, not an error page */
+        if(csv.length < 100 || csv.indexOf(',') < 0) throw new Error('Empty or invalid CSV');
+        var tabName = a.name + a.variant;
+        console.log('[Schedule] Found: ' + tabName);
+        return {url:a.url, csv:csv, month:a.name, tabName:tabName};
       });
     }).catch(function(){ return tryNext(i+1); });
   }
@@ -832,12 +851,12 @@ function loadSchedule(manual){
       }
       scheduleCache=entries;
       console.log('[Schedule] Loaded '+foundMonth+'_BB_RB. Today='+today+' col='+todayCol+'. Agents:',entries.map(function(e){ return e.nickname+'='+e.code; }).join(', '));
-      if(manual) writeLog('SCHEDULE_REFRESH','Manual refresh — loaded '+foundMonth+'_BB_RB');
+      if(manual) writeLog('SCHEDULE_REFRESH','Manual refresh — loaded '+(result.tabName||foundMonth+'_BB_RB'));
       applyScheduleToRows();
       var onShiftCount=rows.filter(function(r){ return r.agentIdx>=0; }).length;
   setTimeout(checkBreakReminder,500);
       var suffix=foundMonth!==kyivMonth?' (fell back from '+kyivMonth+')':'';
-      schedStatus('ok','<strong>'+foundMonth+'_BB_RB</strong> loaded · '+onShiftCount+' agent'+(onShiftCount!==1?'s':'')+' on shift now · next check in ~60s'+suffix);
+      schedStatus('ok','<strong>'+(result.tabName||foundMonth+'_BB_RB')+'</strong> loaded · '+onShiftCount+' agent'+(onShiftCount!==1?'s':'')+' on shift now · next check in ~60s'+suffix);
     })
     .catch(function(err){
       console.error('[Schedule] All months failed:',err);
